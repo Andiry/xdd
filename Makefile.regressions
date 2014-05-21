@@ -1,0 +1,46 @@
+
+HWTEST_TARGETS=\
+hw/BEE3/nvios
+
+HWTEST_TESTNAMES=\
+$(foreach op,read write rw,\
+$(foreach size,512 4KB 4MB,\
+$(foreach latency,DRAM 4us,\
+$(op)_$(size)_$(latency))))
+
+hwtest_targets:
+	@$(foreach target,$(HWTEST_TARGETS),echo $(target); )
+
+hwtest_testlist:
+	@$(foreach test,$(HWTEST_TESTNAMES),echo $(test); )
+
+
+SIZE_512=512
+RANGE_512=134209536
+SIZE_4KB=4096
+RANGE_4KB=16777200
+SIZE_4MB=4194304
+RANGE_4MB=16383
+
+LATENCY_DRAM=4
+LATENCY_4us=1000
+
+define XDD_MACRO
+$(1)_$(2)_$(3):
+	echo $(LATENCY_$(3)) > /proc/HASTE/param_t_nv_rcd
+	echo $(LATENCY_$(3)) > /proc/HASTE/param_t_nv_wrp
+	./bin/xdd.linux -rwratio $(if $(findstring $(1),read),100,$(if $(findstring $(1),write),0,50)) -blocksize $(SIZE_$(2)) -reqsize 1 -targets 1 /dev/bbda -minall -queuedepth 32 -mbytes 56320 -seek random -seek range $(RANGE_$(2)) -seek seed 333 -dio -verbose -runtime 20 2>&1 | tee test.log
+	@if [ "`cat test.log | grep Combined | wc -l`" == "0" ]; then exit 1; fi
+	@echo BEE3_HWTEST_RESULT Bandwidth `cat test.log | grep Combined | awk '{ print $$$$8 }'`
+	@echo BEE3_HWTEST_RESULT IOPS `cat test.log | grep Combined | awk '{ print $$$$9 }'`
+	@rm test.log
+endef
+
+$(foreach op,read write rw,\
+$(foreach size,512 4KB 4MB,\
+$(foreach latency,DRAM 4us,\
+$(eval $(call XDD_MACRO,$(op),$(size),$(latency))))))
+
+
+
+
